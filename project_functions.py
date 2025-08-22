@@ -100,7 +100,7 @@ def add_subscription(url:str, downloaded:int = None, last_checked = None, meta_d
 
     print(subscription_obj)
 
-    logger.info("Creating subscription obj for==================================",subscription_obj)
+    logger.info("Creating subscription obj for==================================%s",subscription_obj)
 
     if not subscription_obj["status"]:
         logger.error("Error while creating subscription obj!")
@@ -787,7 +787,7 @@ def get_subscription_data_obj(url:str,downloaded = None, last_checked=None, last
            "subscription_name": subscription_data["subscription_name"],
            "subscription_path": subscription_data["formed_subscription_url"],
            "subscription_content_count": metadata["playlist_count"], "current_subscription_data": metadata,
-           "output_format": output_format}
+           "output_format": output_format,"category": category}
 
     if downloaded is not None and downloaded > 0:
         obj["downloaded_content_count"] = downloaded
