@@ -69,7 +69,7 @@ def start():
 
 ################# Subscription related
 
-def add_subscription(url:str, downloaded:int = None, last_checked = None, meta_data = None, output_format:list[str] = None):
+def add_subscription(url:str, downloaded:int = None, last_checked = None, meta_data = None, output_format:list[str] = None,category:int = 1):
     """ Add a subscription to the database
 
         Return Values:
@@ -96,8 +96,12 @@ def add_subscription(url:str, downloaded:int = None, last_checked = None, meta_d
                 logger.error("The specified format %s is not a valid format profile!", desired_format)
                 return False
             
-    subscription_obj = get_subscription_data_obj(url, downloaded, last_checked, meta_data, output_format)
-   
+    subscription_obj = get_subscription_data_obj(url, downloaded, last_checked, meta_data, output_format,category)
+
+    print(subscription_obj)
+
+    logger.info("Creating subscription obj for==================================",subscription_obj)
+
     if not subscription_obj["status"]:
         logger.error("Error while creating subscription obj!")
         return False
@@ -116,9 +120,32 @@ def add_subscription(url:str, downloaded:int = None, last_checked = None, meta_d
         return False
     logger.info("Subscription for %s successfully created.",
                 subscription_obj["obj"]["subscription_name"])
+
+    add_items(subscription_obj,category)
+
     return True
 
-def add_subscription_batch(file:str, output_format:list[str] = None):
+def add_items(subscription_obj,category:int = 1):
+
+    #  新增items表数据
+    entries = subscription_obj["obj"]["current_subscription_data"]["entries"]
+
+    for entry in list(entries):
+        # 构造数据
+        logger.info("entry=======================%s",entry)
+
+        if entry:
+
+            insert_value("items", {
+                "scheme": subscription_obj["obj"]["scheme"],
+                "subscription_name": subscription_obj["obj"]["subscription_name"],
+                "title": entry["title"],
+                "url": entry["url"],
+                "category":category
+            })
+
+
+def add_subscription_batch(file:str, output_format:list[str] = None,category:int = 1):
     """ Add a subscription to the database using a file
 
         Return Values:
@@ -312,7 +339,8 @@ def update_subscriptions():
                                     "downloaded_content_count",
                                     "subscription_content_count",
                                     "id",
-                                    "current_subscription_data"
+                                    "current_subscription_data",
+                                    "category"
                                 ],
                                 False,
                                 "ORDER BY scheme")
@@ -333,7 +361,7 @@ def update_subscriptions():
     #Iterate over all subscriptions
     for subscription in subscriptions:
         #Fetch the current object of the subscription
-        current_obj = get_subscription_data_obj(subscription[2])
+        current_obj = get_subscription_data_obj(subscription[2],category=subscription[8])
 
         if not current_obj["status"]:
             logger.error("Error while fetching actual metadata for subscription %s",
@@ -418,6 +446,9 @@ def update_subscriptions():
             continue
         logger.info("Subscription %s successfully updated", subscription[1])
 
+        # 更新完订阅之后 插入items表
+        add_items(current_obj,category=subscription[8])
+
     if len(faulty_subscriptions) > 0:
         for index, subscription in enumerate(faulty_subscriptions):
             logger.warning("Subscription %s exited with an error! - Message: %s",
@@ -437,7 +468,9 @@ def export_subscriptions():
                                                         "downloaded_content_count",
                                                         "last_subscription_data",
                                                         "subscription_name",
-                                                        "output_format"])
+                                                        "output_format",
+                                                        "category"
+                                                        ])
 
     if subscriptions is None:
         logging.error("Error while fetching subscriptions")
@@ -450,7 +483,8 @@ def export_subscriptions():
             "downloaded_content_count": subscription[2],
             "last_subscription_data": subscription[3],
             "subscription_name": subscription[4],
-            "output_format": subscription[5]
+            "output_format": subscription[5],
+            "category": subscription[6]
         }
         exported_subscriptions.append(subscription_obj)
     base_path = fetch_value("config", {"option_name": "base_location"}, ["option_value"], True)
@@ -519,7 +553,9 @@ def import_subscriptions(path="./", delelte_current_subscriptions=False):
                                        subscription["downloaded_content_count"],
                                        subscription["subscription_last_checked"],
                                        subscription["last_subscription_data"],
-                                       format_list)
+                                       format_list,
+                                       subscription["category"]
+                                       )
             if not success:
                 error_raised = True
                 failed_imports.append(subscription["subscription_name"])
@@ -680,7 +716,7 @@ def create_subscription_url(url:str, scheme:json):
     return_val["status"] = True
     return return_val
 
-def get_subscription_data_obj(url:str, downloaded = None, last_checked=None, last_metadata=None, output_format=None):
+def get_subscription_data_obj(url:str,downloaded = None, last_checked=None, last_metadata=None, output_format=None,category=None):
     """ Returns a dict containing all information about a subscription (db obj) and
         also if the url already exist in db
 
@@ -701,23 +737,18 @@ def get_subscription_data_obj(url:str, downloaded = None, last_checked=None, las
             }
         }
     """
-    subscription_entry:dict = {
-        "status": False,
-        "exist_in_db": False
-    }
-
-    subscription_entry["obj"] = {
-            "scheme": None,
-            "subscription_name": None,
-            "subscription_path": None,
-            "passed_subscription_path": url,
-            "subscription_content_count": None,
-            "current_subscription_data": None,
-            "last_subscription_data": None,
-            "downloaded_content_count": None,
-            "output_format": output_format
-        }
-
+    subscription_entry:dict = {"status": False, "exist_in_db": False, "obj": {
+        "scheme": None,
+        "subscription_name": None,
+        "subscription_path": None,
+        "passed_subscription_path": url,
+        "subscription_content_count": None,
+        "current_subscription_data": None,
+        "last_subscription_data": None,
+        "downloaded_content_count": None,
+        "output_format": output_format,
+        "category": category
+    }}
 
     data = prepare_scheme_dst_data(url)
     if data["status"] is False or data["scheme"] is None:
@@ -752,14 +783,11 @@ def get_subscription_data_obj(url:str, downloaded = None, last_checked=None, las
                      metadata)
         return subscription_entry
 
-    obj = {}
-    obj["scheme"] = data["scheme"]["schema_name"]
-    obj["passed_subscription_path"] = url
-    obj["subscription_name"] = subscription_data["subscription_name"]
-    obj["subscription_path"] = subscription_data["formed_subscription_url"]
-    obj["subscription_content_count"] = metadata["playlist_count"]
-    obj["current_subscription_data"] = metadata
-    obj["output_format"] = output_format
+    obj = {"scheme": data["scheme"]["schema_name"], "passed_subscription_path": url,
+           "subscription_name": subscription_data["subscription_name"],
+           "subscription_path": subscription_data["formed_subscription_url"],
+           "subscription_content_count": metadata["playlist_count"], "current_subscription_data": metadata,
+           "output_format": output_format}
 
     if downloaded is not None and downloaded > 0:
         obj["downloaded_content_count"] = downloaded
@@ -841,7 +869,7 @@ def direct_download_batch(file:str, output_format:list[str] = None):
     return False
 
 #This function is called from CLI
-def direct_download(url:str, own_file_data:dict=None, output_format:list[str] = None):
+def direct_download(url:str, own_file_data:dict=None, output_format:list[str] = None,id=None):
     """ This function represents the "manual" video download approach
         You can pass an url and the file will be downlaoded, hashed and registered.
 
@@ -900,7 +928,7 @@ def direct_download(url:str, own_file_data:dict=None, output_format:list[str] = 
                                            full_file_path,
                                            file_hash["hash"],
                                            {"url": [url]},
-                                           metadata)
+                                           metadata,id)
         if video_registered:
             logger.info("File successfully downlaoded.")
             return True
@@ -1079,18 +1107,34 @@ def download_missing():
                           subscription[1])
             continue
 
-        for entry in metadata["entries"]:
+        #  获取未下载的item download_status 0未下载 1已下载
+        entries = fetch_value("items",
+                            {
+                                "scheme":subscription[0],
+                                "subscription_name":subscription[1],
+                                "download_status":0
+                            },
+                            [
+                                "id",
+                                "url",
+                                "title"
+                            ], None)
+
+        for entry in entries:
+
+            logger.info("Download %s", entry)
+
             #Check each entry if it already exist before downloading,
             #using the title and the link
-            if not "title" in entry or not "url" in entry:
+            if not entry[2] or not entry[1]:
                 logger.error("Entry misses needed keys! - SKIP")
                 continue
 
             #To do all the work, the scheme is needed
-            entry_scheme = load_scheme(entry["url"])
+            entry_scheme = load_scheme(entry[1])
 
             if not entry_scheme["status"] or entry_scheme["scheme"] is None:
-                logger.error("Error while loading scheme for %s! - SKIP", entry["title"])
+                logger.error("Error while loading scheme for %s! - SKIP", entry[2])
                 continue
 
 
@@ -1098,94 +1142,94 @@ def download_missing():
             expected_path = subscription_path["dst_path"]
 
             if expected_path is None:
-                logger.error("Error while fetching expected path for %s - SKIP", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching expected path for %s - SKIP", entry[2])
+                failed_downloads[subscription[1]].append(entry[2])
                 continue
 
-            file_metadata = get_metadata(entry["url"], get_ydl_opts(expected_path, format_filter=output_filter))
+            file_metadata = get_metadata(entry[1], get_ydl_opts(expected_path, format_filter=output_filter))
 
             if file_metadata is None:
-                logger.error("Error while fetching metadata! - Skip item %s", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching metadata! - Skip item %s", entry[2])
+                failed_downloads[subscription[1]].append(entry[2])
                 continue
 
             expected_filename = get_expected_filepath(file_metadata, expected_path)
 
             if not expected_filename["filename"]:
-                logger.error("Error while fetching filename for %s! - Skip item", entry["title"])
-                failed_downloads[subscription[1]].append(entry["title"])
+                logger.error("Error while fetching filename for %s! - Skip item", entry[2])
+                failed_downloads[subscription[1]].append(entry[2])
                 continue
 
             #This bool is used to decide if the current entry will be downloaded
             download_file_now = True
 
-            file_already_exist_in_db = fetch_value("items", [
-                {"file_name" : expected_filename["filename"]},
-                {"url": entry["url"]}],
-                ["id", "url", "tags", "data"], True)
+            # file_already_exist_in_db = fetch_value("items", [
+            #     {"file_name" : expected_filename["filename"]},
+            #     {"url": entry["url"]}],
+            #     ["id", "url", "tags", "data"], True)
 
-            if(file_already_exist_in_db is not None and
-               file_already_exist_in_db is not False and
-               len(file_already_exist_in_db) > 0):
-                download_file_now = False
-                #Check if the file also exist on FS
-                #Check if missing files should be redownlaoded automatically. If so do it here...
-                # This function is also used in the check() function but only based on
-                # db entries!
-                redownload_missing_files = fetch_value_as_bool("config",
-                                    {"option_name": "automatically_redownload_missing_files"},
-                                    ["option_value"], True)
-
-                if redownload_missing_files:
-                    logger.debug("""File %s already exist on db! -
-                             Redownload is enabled check for File on FS...""", entry["title"])
-
-                    expected_file_path = os.path.join(expected_path, expected_filename["filename"])
-                    file_already_exist_on_fs = os.path.isfile(expected_file_path)
-                    if not file_already_exist_on_fs:
-                        logger.info("""File %s already exists on db but not on your FS!
-                                    File will be redownloaded...""", entry["title"])
-                    else:
-                        logger.debug("File also exist on FS - SKIP")
-                        download_file_now = False
-                        downloaded += 1
-                else:
-                    #Since files should not be redownloaded we will assume that the file exist
-                    #on FS.
-                    downloaded += 1
-                    download_file_now = False
-
-                #Check if all data are existing for the current file
-                # url = file_already_exist_in_db[1], tags = 2, data = 3
-                data_inserted = insert_missing_file_data_in_db(file_already_exist_in_db[0], entry["url"], file_metadata)
-
-                if not data_inserted:
-                    logger.error("Error while inserting data!")
-            else:
-                logger.info("New file %s will be downloaded", entry["title"])
-
+            # if(file_already_exist_in_db is not None and
+            #    file_already_exist_in_db is not False and
+            #    len(file_already_exist_in_db) > 0):
+            #     download_file_now = False
+            #     #Check if the file also exist on FS
+            #     #Check if missing files should be redownlaoded automatically. If so do it here...
+            #     # This function is also used in the check() function but only based on
+            #     # db entries!
+            #     redownload_missing_files = fetch_value_as_bool("config",
+            #                         {"option_name": "automatically_redownload_missing_files"},
+            #                         ["option_value"], True)
+            #
+            #     if redownload_missing_files:
+            #         logger.debug("""File %s already exist on db! -
+            #                  Redownload is enabled check for File on FS...""", entry["title"])
+            #
+            #         expected_file_path = os.path.join(expected_path, expected_filename["filename"])
+            #         file_already_exist_on_fs = os.path.isfile(expected_file_path)
+            #         if not file_already_exist_on_fs:
+            #             logger.info("""File %s already exists on db but not on your FS!
+            #                         File will be redownloaded...""", entry["title"])
+            #         else:
+            #             logger.debug("File also exist on FS - SKIP")
+            #             download_file_now = False
+            #             downloaded += 1
+            #     else:
+            #         #Since files should not be redownloaded we will assume that the file exist
+            #         #on FS.
+            #         downloaded += 1
+            #         download_file_now = False
+            #
+            #     #Check if all data are existing for the current file
+            #     # url = file_already_exist_in_db[1], tags = 2, data = 3
+            #     data_inserted = insert_missing_file_data_in_db(file_already_exist_in_db[0], entry["url"], file_metadata)
+            #
+            #     if not data_inserted:
+            #         logger.error("Error while inserting data!")
+            # else:
+            #     logger.info("New file %s will be downloaded", entry["title"])
+            logger.info("New file %s will be downloaded", entry[2])
             #If the file should not be downlaoded go to the next one
             if not download_file_now:
                 continue
 
-            file_downloaded = direct_download(entry["url"], subscription_path, output_format=output_filter)
+            file_downloaded = direct_download(entry[1], subscription_path, output_format=output_filter,id=entry[0])
 
             if not file_downloaded:
                 #Append to the current subscription error log
-                failed_downloads[subscription[1]].append(entry["title"])
+                failed_downloads[subscription[1]].append(entry[2])
                 continue
             # 根据url更新 db
-            db_entry = fetch_value("items", [
-                {"file_name": expected_filename["filename"]},
-                {"url": entry["url"]}],["id", "url", "tags", "data"], True)
-            print(f"==========================={db_entry}")
+            # db_entry = fetch_value("items", [
+            #     {"file_name": expected_filename["filename"]},
+            #     {"url": entry["url"]}],["id", "url", "tags", "data"], True)
+            # print(f"==========================={db_entry}")
+            #
+            # if db_entry is None:
+            #     logger.info("Cant fetch db entry!")
+            #     return False
+            update_value("items", {"download_status":1,"status":1},conditions={"id": entry[0]})
 
-            if db_entry is None:
-                logger.info("Cant fetch db entry!")
-                return False
-            update_value("items", {"title": entry["title"],"subscription_name":current_subscription,"status":1},conditions={"id": db_entry[0]})
-
-            logger.info("File %s successfully downloaded", entry["title"])
+            logger.info("File %s successfully downloaded", entry[2])
             downloaded += 1
 
         #Modify the "downloaded_content_count" column in db
@@ -1217,7 +1261,7 @@ def download_missing():
 
 ################# DB functions
 
-def save_file_to_db(scheme_data, full_file_path, file_hash, url, metadata):
+def save_file_to_db(scheme_data, full_file_path, file_hash, url, metadata,id=None):
     """ This function is used to save a file into the items table. It is basically
         an SQL Insert wrapper
 
@@ -1278,7 +1322,12 @@ def save_file_to_db(scheme_data, full_file_path, file_hash, url, metadata):
             logger.debug("No tags key found in metadata")
     else:
         logger.info("Tags are not inserted from ydl")
-    video_registered = insert_value("items", video_data)
+
+
+    if id :
+        video_registered = update_value("items", video_data, {"id": id})
+    else:
+        video_registered = insert_value("items", video_data)
     if not video_registered:
         logger.error("Error while saving file to db!! - Please check log.")
         #Line Break for Pylint #C0301

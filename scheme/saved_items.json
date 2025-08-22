@@ -7,16 +7,18 @@
             "id": {"type": "integer", "primary_key": true, "auto_increment": true, "not_null": true, "unique": false},
             "scheme": {"type": "text", "not_null": true},
             "subscription_name": {"type": "text", "not_null": false},
-            "file_name": {"type": "text", "not_null": true},
+            "file_name": {"type": "text", "not_null": false},
             "title": {"type": "text", "not_null": false},
-            "file_path": {"type": "text", "not_null": true},
-            "file_hash": {"type": "text", "not_null": true, "unique": true},
+            "file_path": {"type": "text", "not_null": false},
+            "file_hash": {"type": "text", "not_null": false, "unique": true},
             "url": {"type": "text", "not_null": false, "unique": true},
             "created": {"type": "DATETIME", "default": "CURRENT_TIMESTAMP"},
             "locked": {"type": "integer", "not_null": true, "default": "0"},
             "tags": {"type": "text", "not_null": false},
             "data": {"type": "text", "not_null": false},
-            "status": {"type": "integer", "not_null": true, "default": "0"}
+            "status": {"type": "integer", "not_null": true, "default": "0"},
+            "category": {"type": "integer", "not_null": true},
+            "download_status": {"type": "integer", "not_null": true, "default": "0"}
         }
     }
 }

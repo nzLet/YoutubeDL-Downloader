@@ -126,7 +126,11 @@ def main():
         const=None,  # Default to 'NONE' if --output-profile is provided without a value
         type=convert_to_list
     )
-
+    add_sub.add_argument(
+        "--category",
+        help="Category ID for the subscription",
+        type=int
+    )
     # Delete subscription command
     del_sub = subparsers.add_parser("del-subscription", help="Delete a subscription")
     del_sub.add_argument("url", help="URL of the subscription")
@@ -180,9 +184,9 @@ def main():
     commands = {
         "help": show_help,
         "add-subscription": lambda: (
-            add_subscription_batch(file=args.url, output_format=args.output_format) if args.batch else add_subscription(url=args.url, output_format=args.output_format)
+            add_subscription_batch(file=args.url, output_format=args.output_format,category=args.category) if args.batch else add_subscription(url=args.url, output_format=args.output_format,category=args.category)
         ) if args.output_format is not None else (
-            add_subscription_batch(args.url) if args.batch else add_subscription(args.url)
+            add_subscription_batch(args.url,category=args.category) if args.batch else add_subscription(args.url,category=args.category)
         ),
         "del-subscription": lambda: del_subscription(args.url),
         "list-subscriptions": lambda: list_subscriptions(list(args.filter.split(",")) if args.filter else None),
