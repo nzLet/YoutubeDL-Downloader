@@ -23,6 +23,7 @@ import json
 import pathlib
 import hashlib
 import re
+import time
 from datetime import datetime
 
 import urllib.parse as urlparse
@@ -1232,13 +1233,19 @@ def download_missing():
             logger.info("File %s successfully downloaded", entry[2])
             downloaded += 1
 
-        #Modify the "downloaded_content_count" column in db
-        value_modified = update_value("subscriptions",
-                                      {"downloaded_content_count": str(downloaded)},
-                                      {"subscription_name" : str(current_subscription)})
+            #Modify the "downloaded_content_count" column in db
+            value_modified = update_value("subscriptions",
+                                          {"downloaded_content_count": str(downloaded)},
+                                          {"subscription_name" : str(current_subscription)})
 
-        if not value_modified:
-            logger.error("Error while modifing downlaoded content value")
+
+            if not value_modified:
+                logger.error("Error while modifing downlaoded content value")
+
+            # 加入特殊逻辑 下载后等待30分钟
+            logger.info("下载完成等待 600s继续")
+            time.sleep(600)
+
 
     #Iterate over the error object and create error message
     error_shown = False
